@@ -1,91 +1,215 @@
-# Implementación de sockets con interfaz gráfica en Sokects1
+# Sokects1: chat con sockets e interfaz gráfica
 
-Esta guía adapta el documento original al proyecto Maven existente en NetBeans. Se conservan sus paquetes, nombres de clases y archivos `.form`.
+## Descripción del proyecto
 
-## Requisitos y ejecución en NetBeans
+Sokects1 es una aplicación de chat desarrollada en Java que permite la comunicación entre varios usuarios mediante sockets TCP. Utiliza una arquitectura cliente-servidor: un servidor central recibe las conexiones y distribuye los mensajes, mientras cada cliente dispone de una interfaz gráfica para conectarse y conversar.
 
-1. Abre la carpeta `Sokects1` mediante **File > Open Project**.
-2. Selecciona un **JDK 17 o posterior** para el proyecto. El equipo tiene JDK 26; el `pom.xml` genera bytecode compatible con Java 17.
-3. Ejecuta **Clean and Build**. Maven necesita Internet la primera vez para descargar sus plugins.
-4. Pulsa **Run Project (F6)** y selecciona **Servidor**. El registro debe indicar `Servidor iniciado en puerto 59420`.
-5. Haz clic derecho en `com.mycompany.sokects1.LoginCliente` y elige **Run File (Shift+F6)**. Usa `127.0.0.1`, puerto `59420` y un nombre.
-6. Repite el paso anterior con otro nombre para abrir un segundo cliente. Escribe un mensaje y pulsa **Enter**.
-7. Escribe `chao` o cierra la ventana para salir. Cierra el servidor para desconectar todos sus clientes y liberar el puerto.
+Las ventanas están construidas con Swing y organizadas como formularios de NetBeans. El proyecto utiliza Maven para compilar el código y generar un archivo JAR ejecutable. La lógica de comunicación está separada de las ventanas para mantener responsabilidades claras.
 
-También puedes ejecutar directamente `com.mycompany.sokects1.Servidor` con **Run File**. `ChatCliente.main` abre el formulario de conexión para evitar iniciar un chat sin una sesión.
+## Funcionalidades
 
-## Correspondencia con el documento original
+- Iniciar un servidor TCP en el puerto `59420`.
+- Conectar varios clientes mediante la dirección del servidor, el puerto y un nombre de usuario.
+- Enviar mensajes de texto y recibir los mensajes de los demás participantes.
+- Mostrar avisos de ingreso y salida de usuarios.
+- Consultar las conexiones y desconexiones en el registro del servidor.
+- Desconectarse escribiendo `chao` o cerrando la ventana del chat.
+- Detectar el cierre del servidor y desactivar la entrada de mensajes del cliente.
 
-| Documento de referencia | Clase real del proyecto | Responsabilidad |
-| --- | --- | --- |
-| `chat.Servidor` | `Chat.Servidor` | Escuchar conexiones y retransmitir mensajes |
-| `chat.ManejadorCliente` | `Chat.Listener` | Leer el nombre y atender un cliente |
-| `chat.Cliente` | `Chat.Cliente` | Conectar, enviar y escuchar |
-| `chat.ServidorGUI` | `com.mycompany.sokects1.Servidor` | Mostrar el registro del servidor |
-| `chat.ClienteLoginGUI` | `com.mycompany.sokects1.LoginCliente` | Validar y solicitar la conexión |
-| `chat.ClienteChatGUI` | `com.mycompany.sokects1.ChatCliente` | Mostrar el historial y enviar texto |
-| Punto de entrada | `com.mycompany.sokects1.Sokects1` | Elegir servidor o cliente al pulsar F6 |
+## Tecnologías utilizadas
 
-**Importante:** el paquete existente se llama `Chat`, con mayúscula. La clase lógica `Chat.Servidor` y la ventana `com.mycompany.sokects1.Servidor` tienen el mismo nombre simple; la ventana usa el nombre completo para distinguirlas.
+| Tecnología | Uso en el proyecto |
+| --- | --- |
+| Java 17 o posterior | Lenguaje y entorno de ejecución |
+| Swing | Ventanas, controles y eventos de la interfaz gráfica |
+| `ServerSocket` y `Socket` | Comunicación TCP entre servidor y clientes |
+| Hilos de Java | Aceptar conexiones y escuchar mensajes sin bloquear las ventanas |
+| `SwingWorker` | Realizar conexiones y envíos fuera del hilo de eventos |
+| Maven | Compilar, empaquetar y ejecutar la aplicación |
+| NetBeans | Desarrollo del código y edición visual de los formularios |
+| Javadoc | Documentación de clases, constructores y métodos |
+
+## Estructura principal
+
+```text
+Sokects1/
+├── pom.xml
+├── nbactions.xml
+├── implementacion_sockets_con_interfaz_grafica.md
+└── src/main/java/
+    ├── Chat/
+    │   ├── Cliente.java
+    │   ├── Listener.java
+    │   └── Servidor.java
+    └── com/mycompany/sokects1/
+        ├── Sokects1.java
+        ├── LoginCliente.java
+        ├── LoginCliente.form
+        ├── ChatCliente.java
+        ├── ChatCliente.form
+        ├── Servidor.java
+        └── Servidor.form
+```
+
+El paquete `Chat`, con mayúscula inicial, contiene la lógica de red. El paquete `com.mycompany.sokects1` contiene el punto de entrada y las ventanas. Existen dos clases llamadas `Servidor`; su paquete permite distinguir el servidor de red de su interfaz gráfica.
+
+## Descripción de las clases
+
+### `Chat.Servidor`
+
+Administra el servidor TCP y mantiene el conjunto de conexiones activas. Usa una colección concurrente para permitir que los hilos de los clientes consulten y actualicen las conexiones.
+
+Su constructor recibe el puerto de escucha y un observador de eventos. La interfaz interna `ServidorObserver` define `onLog(String mensaje)`, que permite comunicar información a la ventana sin introducir dependencias de Swing en la lógica de red.
+
+| Método | Responsabilidad |
+| --- | --- |
+| `iniciar()` | Abre el puerto y comienza a aceptar clientes en un hilo independiente |
+| `aceptar(ServerSocket actual)` | Crea un `Listener` para cada conexión aceptada |
+| `detener()` | Cierra la escucha y las conexiones de los clientes |
+| `transmitirMensaje(String mensaje, Listener remitente)` | Envía el mensaje a los clientes distintos del remitente |
+| `removerCliente(Listener cliente)` | Retira una conexión del conjunto de clientes |
+| `registrarLog(String mensaje)` | Notifica un evento al observador |
+
+### `Chat.Listener`
+
+Representa la atención de un cliente dentro del servidor. Implementa `Runnable`, por lo que cada instancia se ejecuta en un hilo propio. Su constructor recibe el socket aceptado y la instancia de `Chat.Servidor` que coordina la conversación.
+
+La primera línea recibida identifica al usuario. Después, el manejador lee los mensajes y solicita al servidor su retransmisión. Al recibir `chao`, finalizar el flujo o producirse un error, retira al cliente, cierra su socket y comunica su salida cuando corresponde.
+
+| Método | Responsabilidad |
+| --- | --- |
+| `run()` | Lee el nombre, procesa mensajes y gestiona el final de la sesión |
+| `enviarMensaje(String mensaje)` | Escribe una línea hacia el cliente identificado |
+| `cerrar()` | Cierra el socket y desbloquea las lecturas pendientes |
+
+### `Chat.Cliente`
+
+Gestiona una sesión TCP desde el lado del usuario. Su constructor recibe la dirección del servidor, el puerto, el nombre del usuario y un observador. Valida los datos y utiliza UTF-8 para intercambiar texto.
+
+La interfaz interna `ClienteObserver` define `onMensajeRecibido(String mensaje)` y `onDesconectado()`. Estos eventos permiten que la ventana reciba mensajes y detecte el cierre de la conexión. Cada instancia corresponde a una sola sesión; para conectarse de nuevo se crea otra instancia.
+
+| Método | Responsabilidad |
+| --- | --- |
+| `conectar()` | Conecta con un límite de cinco segundos, envía el nombre e inicia el hilo de escucha |
+| `escuchar(BufferedReader in)` | Lee las líneas del servidor y notifica al observador |
+| `enviarMensaje(String mensaje)` | Envía una línea y detecta errores de escritura |
+| `desconectar()` | Cierra la conexión y notifica su final una sola vez |
+| `getUsuario()` | Devuelve el nombre visible del usuario |
+
+### `com.mycompany.sokects1.Sokects1`
+
+Es el punto de entrada del proyecto. Su método `main(String[] args)` inicia la interfaz en el hilo de eventos de Swing.
+
+Si no recibe argumentos, muestra un selector para abrir el servidor o un cliente. Con el argumento `servidor` abre la ventana de registro; con `cliente` abre el formulario de conexión. Esta clase está configurada como principal en Maven, en las acciones del proyecto de NetBeans y en el manifiesto del JAR.
+
+### `com.mycompany.sokects1.LoginCliente`
+
+Es el formulario de conexión. Permite introducir la dirección del servidor, el puerto y el nombre del usuario. Sus valores iniciales son `127.0.0.1`, `59420` y `poli01`.
+
+El botón **Aceptar** valida los datos e inicia la conexión mediante `SwingWorker`. Mientras se conecta, desactiva ese botón para impedir solicitudes repetidas. Si la conexión tiene éxito, muestra `ChatCliente` y cierra el formulario; si falla, informa el error y permite reintentar. **Cancelar** cierra el formulario cuando no hay una conexión en curso.
+
+| Método | Responsabilidad |
+| --- | --- |
+| `initComponents()` | Inicializa los controles y eventos definidos en `LoginCliente.form` |
+| `configurarInterfaz()` | Establece el botón predeterminado del formulario |
+| `conectar()` | Valida los datos y coordina la conexión en segundo plano |
+| `main(String[] args)` | Permite abrir directamente el formulario |
+
+### `com.mycompany.sokects1.ChatCliente`
+
+Es la ventana de conversación. Implementa `Chat.Cliente.ClienteObserver` y contiene el encabezado, el historial de mensajes y el campo de entrada.
+
+El constructor con dirección, puerto y nombre prepara la sesión de red. Al pulsar **Enter**, envía el texto en segundo plano y lo añade al historial local cuando el envío termina correctamente. Los mensajes recibidos y los cambios de estado se aplican mediante `SwingUtilities.invokeLater`.
+
+| Método | Responsabilidad |
+| --- | --- |
+| `initComponents()` | Inicializa los controles y eventos definidos en `ChatCliente.form` |
+| `conectar()` | Abre la sesión de red y habilita la entrada cuando corresponde |
+| `enviarMensaje()` | Procesa el texto escrito y reconoce `chao` como orden de salida |
+| `onMensajeRecibido(String mensaje)` | Añade una línea al historial |
+| `onDesconectado()` | Informa la desconexión y desactiva la entrada |
+| `main(String[] args)` | Abre `LoginCliente` para solicitar los datos antes del chat |
+
+Cerrar esta ventana también cierra su conexión.
+
+### `com.mycompany.sokects1.Servidor`
+
+Es la ventana de registro del servidor. Implementa `Chat.Servidor.ServidorObserver` y muestra los eventos de inicio, conexión, desconexión y errores de red.
+
+Durante la ejecución crea una instancia de `Chat.Servidor` en el puerto `59420`. Su configuración evita iniciar la red cuando está activo el modo de diseño. Al cerrar la ventana, detiene el servidor y libera sus conexiones.
+
+| Método | Responsabilidad |
+| --- | --- |
+| `initComponents()` | Inicializa los controles y eventos definidos en `Servidor.form` |
+| `configurarInterfaz()` | Crea e inicia el servidor durante la ejecución |
+| `onLog(String mensaje)` | Añade eventos al registro mediante el hilo de Swing |
+| `main(String[] args)` | Permite iniciar directamente la ventana del servidor |
+
+## Flujo de comunicación
+
+1. El servidor abre el puerto `59420` y espera conexiones.
+2. El usuario introduce sus datos en `LoginCliente`.
+3. `Chat.Cliente` abre el socket y envía el nombre como primera línea.
+4. El servidor crea un `Listener` para atender esa conexión.
+5. El cliente envía mensajes; el servidor los distribuye a los demás participantes con el formato `nombre--> mensaje`.
+6. La ventana del remitente muestra su propio mensaje localmente.
+7. Al salir un participante, el servidor retira su conexión y avisa a los demás. Al cerrar el servidor, los clientes detectan el final de la sesión.
 
 ## Formularios de NetBeans
 
-Los controles, propiedades, distribución y eventos están declarados en cada archivo `.form` y en los bloques `GEN-BEGIN` correspondientes del `.java`. Las tres ventanas se pueden abrir, visualizar y editar en la pestaña **Design** de NetBeans. Usa el árbol **Navigator** para seleccionar componentes dentro de paneles y barras de desplazamiento.
+Cada ventana tiene un archivo `.java` y un archivo `.form`. El `.form` describe los componentes, sus propiedades, su distribución y los eventos que administra el editor visual. El `.java` contiene el código generado y el comportamiento de la ventana.
 
-La lógica de sockets permanece fuera de `initComponents()`. NetBeans puede regenerar ese método sin eliminar la conexión, los observadores ni los manejadores de eventos. El servidor no abre puertos durante el diseño.
+Los controles están declarados en los formularios y se inicializan dentro de `initComponents()`. Para modificar su apariencia se utiliza la pestaña **Design** y el árbol **Navigator**. La lógica de red y los manejadores de eventos permanecen fuera de los bloques protegidos `GEN-BEGIN`, permitiendo que NetBeans regenere la interfaz.
 
-## Lógica de comunicación y ajustes
+## Configuración Maven y acciones del proyecto
 
-- TCP usa líneas de texto UTF-8. La primera línea es el nombre; las siguientes son mensajes.
-- El servidor envía a los demás clientes `nombre--> mensaje`; el remitente muestra su mensaje localmente.
-- `Listener` tiene un constructor con su nombre correcto. El original declaraba `ManejadorCliente` dentro de `Listener`, lo que impedía compilar.
-- La colección de conexiones admite acceso concurrente. Cerrar el servidor cierra también los sockets aceptados, incluidos los que aún no enviaron su nombre.
-- La conexión del cliente se realiza con `SwingWorker` y un límite de cinco segundos; la interfaz permanece disponible mientras conecta.
-- Los eventos recibidos se aplican mediante `SwingUtilities.invokeLater`. Se notifica la desconexión tanto ante errores como ante fin normal del flujo.
-- Se validan nombre, dirección y puerto. Si falla la conexión, el formulario permite corregir y reintentar.
-- El cierre de una ventana libera sus recursos sin terminar otras ventanas con `System.exit`.
-- Las clases, constructores y métodos incluyen Javadoc; los parámetros se documentan con `@param`, y se agregan `@return` y `@throws` donde aplican.
+El archivo `pom.xml` define el identificador `com.mycompany:Sokects1:1.0-SNAPSHOT`, el empaquetado JAR, la codificación UTF-8 y la compilación compatible con Java 17.
+
+| Plugin | Versión | Función |
+| --- | --- | --- |
+| `maven-compiler-plugin` | `3.13.0` | Compilar el código Java |
+| `maven-jar-plugin` | `3.4.2` | Generar el JAR con la clase principal en su manifiesto |
+| `exec-maven-plugin` | `3.5.0` | Ejecutar la aplicación desde Maven y las acciones configuradas |
+
+El archivo `nbactions.xml` establece `com.mycompany.sokects1.Sokects1` como clase principal al ejecutar el proyecto. También define las acciones **Ejecutar servidor** y **Ejecutar cliente** con las clases de sus respectivas ventanas.
+
+## Ejecución en NetBeans
+
+1. Abre la carpeta `Sokects1` con **File > Open Project**.
+2. Configura un JDK 17 o posterior y ejecuta **Clean and Build**.
+3. Pulsa **F6** y selecciona **Servidor**. El registro debe mostrar el inicio en el puerto `59420`.
+4. Abre `LoginCliente.java` y pulsa **Shift+F6**, o utiliza la acción **Ejecutar cliente** del proyecto.
+5. Introduce `127.0.0.1`, el puerto `59420` y un nombre de usuario.
+6. Abre otro cliente con un nombre diferente para conversar. Escribe el mensaje y pulsa **Enter**.
+7. Para salir, escribe `chao` o cierra la ventana. Cierra la ventana del servidor al terminar.
+
+Las acciones personalizadas están disponibles desde el menú contextual del proyecto en **Run Maven / Ejecutar Maven**. Si NetBeans conserva acciones anteriores, cierra y vuelve a abrir el proyecto.
 
 ## Ejecución desde una terminal
 
-Desde la carpeta del proyecto, con Java y Maven configurados:
+Con Java y Maven configurados, ejecuta desde la carpeta del proyecto:
 
 ```powershell
 mvn clean package
 java -jar target\Sokects1-1.0-SNAPSHOT.jar servidor
 ```
 
-En otras dos terminales, una por cliente:
+En otra terminal, abre un cliente:
 
 ```powershell
 java -jar target\Sokects1-1.0-SNAPSHOT.jar cliente
 ```
 
-Si omites el argumento, aparece el selector de modo. También puedes usar `mvn exec:java` para abrirlo.
+Repite el comando del cliente para abrir otros participantes. Sin argumentos, el JAR muestra el selector de modo. También puedes abrirlo con `mvn exec:java`.
 
-## Verificación y Javadoc
+## Documentación del código
 
-```powershell
-.\verificar.ps1 -Jdk 'C:\Program Files\Java\jdk-26.0.2.1'
-$fuentes = @(Get-ChildItem src\main\java -Recurse -Filter '*.java' | ForEach-Object FullName)
-javadoc -encoding UTF-8 -charset UTF-8 -d target\apidocs @fuentes
-```
+Las clases, constructores y métodos utilizan comentarios Javadoc con el formato `/** ... */`. Las etiquetas `@param` describen los parámetros, `@return` los valores devueltos y `@throws` las excepciones declaradas cuando corresponde.
 
-La prueba independiente usa sockets reales y verifica mensajes en ambos sentidos, acentos, salida `chao`, desconexión local, cierre del servidor, puerto ocupado, liberación del puerto y reinicio. No necesita bibliotecas de pruebas. El índice de la documentación HTML queda en `target/apidocs/index.html`.
+## Consideraciones de uso
 
-## Problemas habituales
-
-- **Conexión rechazada:** inicia primero el servidor y verifica dirección y puerto.
-- **Address already in use:** ya hay un servidor en el puerto 59420. Cierra la instancia anterior antes de abrir otra.
-- **Dos equipos:** usa en el cliente la IP local del equipo servidor y permite Java/TCP 59420 en su firewall. `127.0.0.1` solo sirve para clientes en el mismo equipo.
-- **No llegan mensajes:** abre al menos dos clientes; el historial de cada cliente también muestra sus propios mensajes.
-
-Esta implementación corresponde a un chat académico de texto en una red de confianza: no incluye autenticación, cifrado ni persistencia de mensajes.
-
-## Acciones de ejecución de NetBeans
-
-El archivo `nbactions.xml` fija la clase principal de **Run Project (F6)** en `com.mycompany.sokects1.Sokects1` y configura las acciones de depuración y perfilado. Evita que NetBeans intente ejecutar literalmente `${packageClassName}` al no haber un archivo seleccionado.
-
-Para abrir varias instancias también están disponibles las acciones **Ejecutar servidor** y **Ejecutar cliente** desde el menú contextual del proyecto, en **Run Maven / Ejecutar Maven**. **Run File (Shift+F6)** conserva la selección de la clase que se está editando.
-
-Si NetBeans conserva una ejecución anterior, detén esa ejecución y vuelve a pulsar **F6**. Si no actualiza las acciones, cierra y vuelve a abrir el proyecto. El `pom.xml` mantiene el mismo punto de entrada para Maven y para el manifiesto del JAR.
+- Inicia el servidor antes de conectar los clientes.
+- Usa `127.0.0.1` cuando el servidor y los clientes estén en el mismo equipo. Para otros equipos, utiliza la dirección del servidor en la red local.
+- El puerto configurado en el cliente debe coincidir con el del servidor. Un puerto ocupado impide iniciar otra instancia de servidor en esa dirección.
+- La comunicación entre equipos requiere acceso al puerto TCP `59420` en el servidor.
+- La aplicación no incluye autenticación, cifrado ni almacenamiento del historial. Está orientada a la demostración académica de sockets y eventos de interfaz gráfica.
