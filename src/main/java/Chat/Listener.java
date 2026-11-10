@@ -15,6 +15,9 @@ public class Listener implements Runnable {
     /** Estado o recurso interno: nombreUsuario. */
     private volatile String nombreUsuario;
 
+    /** Habilita mensajes de chat solo después de enviar la aceptación. */
+    private volatile boolean listo;
+
     /**
      * Inicializa o ejecuta la operación con los datos indicados.
      * @param socket conexión aceptada por el servidor
@@ -31,8 +34,20 @@ public class Listener implements Runnable {
             BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));
             out = new PrintWriter(new OutputStreamWriter(socket.getOutputStream(), StandardCharsets.UTF_8), true);
             String nombre = in.readLine();
-            if (nombre == null || nombre.trim().isEmpty()) return;
-            nombreUsuario = nombre.trim();
+            if (nombre == null || nombre.trim().isEmpty()) {
+                out.println("ERROR: Escriba un nombre de usuario válido.");
+                return;
+            }
+            nombre = nombre.trim();
+            if (!servidor.registrarUsuario(nombre, this)) {
+                out.println("ERROR: El nombre de usuario '" + nombre + "' ya está conectado. Elija otro nombre.");
+                servidor.registrarLog("Registro rechazado: nombre ocupado '" + nombre + "'");
+                return;
+            }
+            out.println("OK");
+            if (out.checkError()) throw new IOException("No se pudo confirmar el registro");
+            nombreUsuario = nombre;
+            listo = true;
             servidor.registrarLog("Usuario '" + nombreUsuario + "' conectado");
             servidor.transmitirMensaje(nombreUsuario + " se ha unido al chat.", this);
             String mensaje;
@@ -43,6 +58,7 @@ public class Listener implements Runnable {
         } catch (IOException ex) {
             if (!socket.isClosed()) servidor.registrarLog("Conexión perdida: " + ex.getMessage());
         } finally {
+            listo = false;
             servidor.removerCliente(this);
             cerrar();
             if (nombreUsuario != null) {
@@ -57,7 +73,7 @@ public class Listener implements Runnable {
      */
     public void enviarMensaje(String mensaje) {
         PrintWriter salida = out;
-        if (nombreUsuario != null && salida != null) salida.println(mensaje);
+        if (listo && salida != null) salida.println(mensaje);
     }
 
     /** Cierra el socket y desbloquea cualquier lectura pendiente. */

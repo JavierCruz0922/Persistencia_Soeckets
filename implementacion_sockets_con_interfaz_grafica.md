@@ -10,6 +10,7 @@ Las ventanas están construidas con Swing y organizadas como formularios de NetB
 
 - Iniciar un servidor TCP en el puerto `59420`.
 - Conectar varios clientes mediante la dirección del servidor, el puerto y un nombre de usuario.
+- Rechazar nombres ya conectados sin distinguir mayúsculas y minúsculas; por ejemplo, `poli1` y `POLI1` corresponden al mismo nombre.
 - Enviar mensajes de texto y recibir los mensajes de los demás participantes.
 - Mostrar avisos de ingreso y salida de usuarios.
 - Consultar las conexiones y desconexiones en el registro del servidor.
@@ -67,14 +68,15 @@ Su constructor recibe el puerto de escucha y un observador de eventos. La interf
 | `aceptar(ServerSocket actual)` | Crea un `Listener` para cada conexión aceptada |
 | `detener()` | Cierra la escucha y las conexiones de los clientes |
 | `transmitirMensaje(String mensaje, Listener remitente)` | Envía el mensaje a los clientes distintos del remitente |
-| `removerCliente(Listener cliente)` | Retira una conexión del conjunto de clientes |
+| `removerCliente(Listener cliente)` | Retira la conexión y libera su nombre para un nuevo ingreso |
+| `registrarUsuario(String nombre, Listener cliente)` | Reserva el nombre de forma atómica, sin distinguir mayúsculas y minúsculas |
 | `registrarLog(String mensaje)` | Notifica un evento al observador |
 
 ### `Chat.Listener`
 
 Representa la atención de un cliente dentro del servidor. Implementa `Runnable`, por lo que cada instancia se ejecuta en un hilo propio. Su constructor recibe el socket aceptado y la instancia de `Chat.Servidor` que coordina la conversación.
 
-La primera línea recibida identifica al usuario. Después, el manejador lee los mensajes y solicita al servidor su retransmisión. Al recibir `chao`, finalizar el flujo o producirse un error, retira al cliente, cierra su socket y comunica su salida cuando corresponde.
+La primera línea recibida solicita el nombre de usuario. El servidor responde `OK` si puede reservarlo o `ERROR: ...` si el nombre ya está ocupado. Solo después de la aceptación, el manejador lee los mensajes y solicita al servidor su retransmisión. Al recibir `chao`, finalizar el flujo o producirse un error, retira al cliente, cierra su socket y comunica su salida cuando corresponde.
 
 | Método | Responsabilidad |
 | --- | --- |
@@ -90,7 +92,7 @@ La interfaz interna `ClienteObserver` define `onMensajeRecibido(String mensaje)`
 
 | Método | Responsabilidad |
 | --- | --- |
-| `conectar()` | Conecta con un límite de cinco segundos, envía el nombre e inicia el hilo de escucha |
+| `conectar()` | Conecta, envía el nombre y espera hasta cinco segundos la aceptación antes de iniciar el hilo de escucha |
 | `escuchar(BufferedReader in)` | Lee las líneas del servidor y notifica al observador |
 | `enviarMensaje(String mensaje)` | Envía una línea y detecta errores de escritura |
 | `desconectar()` | Cierra la conexión y notifica su final una sola vez |
@@ -150,7 +152,7 @@ Durante la ejecución crea una instancia de `Chat.Servidor` en el puerto `59420`
 1. El servidor abre el puerto `59420` y espera conexiones.
 2. El usuario introduce sus datos en `LoginCliente`.
 3. `Chat.Cliente` abre el socket y envía el nombre como primera línea.
-4. El servidor crea un `Listener` para atender esa conexión.
+4. El servidor crea un `Listener` para atender esa conexión y reserva el nombre. Si ya está conectado, devuelve un error y cierra únicamente la segunda conexión; el formulario permite elegir otro nombre. El chat se abre después de recibir la aceptación.
 5. El cliente envía mensajes; el servidor los distribuye a los demás participantes con el formato `nombre--> mensaje`.
 6. La ventana del remitente muestra su propio mensaje localmente.
 7. Al salir un participante, el servidor retira su conexión y avisa a los demás. Al cerrar el servidor, los clientes detectan el final de la sesión.
@@ -209,6 +211,7 @@ Las clases, constructores y métodos utilizan comentarios Javadoc con el formato
 ## Consideraciones de uso
 
 - Inicia el servidor antes de conectar los clientes.
+- Cada nombre solo puede tener una sesión activa, sin distinguir mayúsculas y minúsculas ni espacios en los extremos. El nombre vuelve a estar disponible cuando el servidor procesa la desconexión de su propietario.
 - Usa `127.0.0.1` cuando el servidor y los clientes estén en el mismo equipo. Para otros equipos, utiliza la dirección del servidor en la red local.
 - El puerto configurado en el cliente debe coincidir con el del servidor. Un puerto ocupado impide iniciar otra instancia de servidor en esa dirección.
 - La comunicación entre equipos requiere acceso al puerto TCP `59420` en el servidor.

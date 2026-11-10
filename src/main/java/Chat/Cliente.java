@@ -49,8 +49,8 @@ public class Cliente {
     }
 
     /**
-     * Conecta con un límite de cinco segundos y comienza a escuchar.
-     * @throws IOException si falla la conexión o el envío del nombre
+     * Conecta y espera hasta cinco segundos la aceptación del nombre por el servidor.
+     * @throws IOException si falla la conexión, el servidor rechaza el nombre o no confirma el registro
      */
     public synchronized void conectar() throws IOException {
         if (socket != null || cerrado.get()) throw new IOException("La sesión ya fue utilizada");
@@ -61,6 +61,15 @@ public class Cliente {
             BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));
             out.println(usuario);
             if (out.checkError()) throw new IOException("No se pudo enviar el nombre");
+            socket.setSoTimeout(5000);
+            String respuesta = in.readLine();
+            if (!"OK".equals(respuesta)) {
+                if (respuesta != null && respuesta.startsWith("ERROR: ")) {
+                    throw new IOException(respuesta.substring("ERROR: ".length()));
+                }
+                throw new IOException("El servidor no confirmó el registro del usuario.");
+            }
+            socket.setSoTimeout(0);
             new Thread(() -> escuchar(in), "cliente-escucha").start();
         } catch (IOException ex) {
             cerrado.set(true);

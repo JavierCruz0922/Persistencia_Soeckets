@@ -4,6 +4,8 @@ import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.Set;
+import java.util.Locale;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ConcurrentHashMap;
 
 /** Servidor TCP que retransmite mensajes sin depender de Swing. */
@@ -14,6 +16,8 @@ public class Servidor {
     private final ServidorObserver observer;
     /** Estado o recurso interno: clientes. */
     private final Set<Listener> clientes = ConcurrentHashMap.newKeySet();
+    /** Nombres normalizados y la conexión propietaria de cada registro. */
+    private final ConcurrentMap<String, Listener> usuarios = new ConcurrentHashMap<>();
     /** Estado o recurso interno: enEjecucion. */
     private boolean enEjecucion;
     /** Estado o recurso interno: socketServidor. */
@@ -84,6 +88,7 @@ public class Servidor {
         }
         for (Listener cliente : clientes) cliente.cerrar();
         clientes.clear();
+        usuarios.clear();
     }
 
     /**
@@ -100,7 +105,24 @@ public class Servidor {
     /** Procesa el dato indicado.
      * @param cliente conexión que terminó
      */
-    public void removerCliente(Listener cliente) { clientes.remove(cliente); }
+    public void removerCliente(Listener cliente) {
+        clientes.remove(cliente);
+        usuarios.forEach((nombre, propietario) -> {
+            if (propietario == cliente) usuarios.remove(nombre, cliente);
+        });
+    }
+
+    /**
+     * Reserva un nombre de forma atómica, ignorando mayúsculas y minúsculas.
+     * @param nombre nombre solicitado por el cliente
+     * @param cliente conexión que solicita el registro
+     * @return true si el nombre quedó reservado para esta conexión
+     */
+    public synchronized boolean registrarUsuario(String nombre, Listener cliente) {
+        if (!enEjecucion || !clientes.contains(cliente)) return false;
+        String clave = nombre.trim().toLowerCase(Locale.ROOT);
+        return usuarios.putIfAbsent(clave, cliente) == null;
+    }
 
     /** Procesa el dato indicado.
      * @param mensaje evento que se enviará al observador
